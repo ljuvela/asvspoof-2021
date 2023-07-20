@@ -180,13 +180,13 @@ def dct(x, norm=None):
 
     v = torch.cat([x[:, ::2], x[:, 1::2].flip([1])], dim=1)
 
-    Vc = torch.rfft(v, 1, onesided=False)
+    Vc = torch.fft.fft(v, axis=1)
 
     k = - torch.arange(N, dtype=x.dtype, device=x.device)[None, :] * np.pi/(2*N)
     W_r = torch.cos(k)
     W_i = torch.sin(k)
 
-    V = Vc[:, :, 0] * W_r - Vc[:, :, 1] * W_i
+    V = Vc.real * W_r - Vc.imag * W_i
 
     if norm == 'ortho':
         V[:, 0] /= np.sqrt(N) * 2

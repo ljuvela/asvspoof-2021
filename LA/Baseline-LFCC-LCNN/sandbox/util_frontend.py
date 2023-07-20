@@ -190,6 +190,9 @@ class LFCC(torch_nn.Module):
         if self.num_coef is None:
             self.num_coef = filter_num
         
+        # window
+        self.register_buffer('window', torch.hamming_window(self.fl))
+
         return
     
     def forward(self, x):
@@ -210,13 +213,15 @@ class LFCC(torch_nn.Module):
             x_copy[:, 1:] = x[:, 1:]  - 0.97 * x[:, 0:-1]
         else:
             x_copy = x
-        
+
         # STFT
-        x_stft = torch.stft(x_copy, self.fn, self.fs, self.fl, 
-                            window=torch.hamming_window(self.fl).to(x.device), 
-                            onesided=True, pad_mode="constant")        
+        x_stft = torch.stft(input=x_copy, n_fft=self.fn,
+                            hop_length=self.fs, win_length=self.fl, 
+                            window=self.window.to(x.device),
+                            onesided=True, pad_mode="constant",
+                            return_complex=True)
         # amplitude
-        sp_amp = torch.norm(x_stft, 2, -1).pow(2).permute(0, 2, 1).contiguous()
+        sp_amp = x_stft.abs().pow(2).permute(0, 2, 1).contiguous()
         
         if self.min_freq_bin > 0 or self.max_freq_bin < (self.fn//2+1):
             sp_amp = sp_amp[:, :, self.min_freq_bin:self.max_freq_bin]

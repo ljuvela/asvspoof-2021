@@ -120,11 +120,11 @@ class Model(torch_nn.Module):
         self.lfcc_dim = [20]
         self.lfcc_with_delta = True
         # only uses [0, 0.5 * Nyquist_freq range for LFCC]
-        self.lfcc_max_freq = 0.5 
+        self.lfcc_max_freq = 0.5 # TODO: 1.0?
 
 
         # window type
-        self.win = torch.hann_window
+        self.win = torch.hann_window # TODO: remove if not used
         # floor in log-spectrum-amplitude calculating (not used)
         self.amp_floor = 0.00001
         
@@ -134,7 +134,7 @@ class Model(torch_nn.Module):
 
 
         # number of sub-models (by default, a single model)
-        self.v_submodels = len(self.frame_lens)        
+        self.v_submodels = len(self.frame_lens)
 
         # dimension of embedding vectors
         # here, the embedding is just the activation before sigmoid()
@@ -296,8 +296,7 @@ class Model(torch_nn.Module):
           x_sp_amp: front-end featues, (batch, frame_num, frame_feat_dim)
         """
         
-        with torch.no_grad():
-            x_sp_amp = self.m_frontend[idx](wav.squeeze(-1))
+        x_sp_amp = self.m_frontend[idx](wav.squeeze(-1))
 
         # return
         return x_sp_amp
@@ -313,11 +312,7 @@ class Model(torch_nn.Module):
         # number of sub models
         batch_size = x.shape[0]
 
-        # buffer to store output scores from sub-models
-        output_emb = torch.zeros([batch_size * self.v_submodels, 
-                                  self.v_emd_dim], 
-                                  device=x.device, dtype=x.dtype)
-        
+        embeddings_list = []
         # compute scores for each sub-models
         for idx, (fs, fl, fn, trunc_len, m_trans, m_be_pool, m_output) in \
             enumerate(
@@ -346,10 +341,12 @@ class Model(torch_nn.Module):
 
             #  5. pass through the output layer
             tmp_emb = m_output((hidden_features_lstm + hidden_features).mean(1))
-            
-            output_emb[idx * batch_size : (idx+1) * batch_size] = tmp_emb
 
-        return output_emb
+            embeddings_list.append(tmp_emb)
+
+        embeddings = torch.cat(embeddings_list, dim=0)
+        return embeddings
+
 
     def _compute_score(self, feature_vec, inference=False):
         """

@@ -14,7 +14,9 @@ import os
 import sys
 import torch
 import re
-from torch._six import container_abcs, string_classes, int_classes
+from six import string_types as string_classes
+from six import integer_types as int_classes
+from collections import abc as container_abcs
 
 """
 The primary motivation is to handle batch of data with varied length.

@@ -22,7 +22,7 @@ class SincConv(nn.Module):
         return 700 * (10 ** (mel / 2595) - 1)
 
 
-    def __init__(self, device,out_channels, kernel_size,in_channels=1,sample_rate=16000,
+    def __init__(self, out_channels, kernel_size,in_channels=1,sample_rate=16000,
                  stride=1, padding=0, dilation=1, bias=False, groups=1):
 
         super(SincConv,self).__init__()
@@ -40,7 +40,6 @@ class SincConv(nn.Module):
         if kernel_size%2==0:
             self.kernel_size=self.kernel_size+1
 
-        self.device=device   
         self.stride = stride
         self.padding = padding
         self.dilation = dilation
@@ -50,7 +49,7 @@ class SincConv(nn.Module):
         if groups > 1:
             raise ValueError('SincConv does not support groups.')
         
-        
+
         # initialize filterbanks using Mel scale
         NFFT = 512
         f=int(self.sample_rate/2)*np.linspace(0,1,int(NFFT/2)+1)
@@ -63,9 +62,11 @@ class SincConv(nn.Module):
         self.hsupp=torch.arange(-(self.kernel_size-1)/2, (self.kernel_size-1)/2+1)
         self.band_pass=torch.zeros(self.out_channels,self.kernel_size)
     
-       
-        
-    def forward(self,x):
+        filters = self.construct_filters()
+        self.register_buffer('filters', filters, persistent=False)
+
+    def construct_filters(self):
+
         for i in range(len(self.mel)-1):
             fmin=self.mel[i]
             fmax=self.mel[i+1]
@@ -75,16 +76,18 @@ class SincConv(nn.Module):
             
             self.band_pass[i,:]=Tensor(np.hamming(self.kernel_size))*Tensor(hideal)
         
-        band_pass_filter=self.band_pass.to(self.device)
+        band_pass_filter=self.band_pass
 
-        self.filters = (band_pass_filter).view(self.out_channels, 1, self.kernel_size)
+        return (band_pass_filter).view(self.out_channels, 1, self.kernel_size)
         
+
+    def forward(self,x):
         return F.conv1d(x, self.filters, stride=self.stride,
                         padding=self.padding, dilation=self.dilation,
-                         bias=None, groups=1)
+                        bias=None, groups=1)
 
 
-        
+
 class Residual_block(nn.Module):
     def __init__(self, nb_filts, first = False):
         super(Residual_block, self).__init__()
@@ -148,13 +151,10 @@ class RawNet(nn.Module):
     def __init__(self, d_args, device):
         super(RawNet, self).__init__()
 
-        
-        self.device=device
-
-        self.Sinc_conv=SincConv(device=self.device,
-			out_channels = d_args['filts'][0],
-			kernel_size = d_args['first_conv'],
-                        in_channels = d_args['in_channels']
+        self.Sinc_conv=SincConv(
+            out_channels = d_args['filts'][0],
+            kernel_size = d_args['first_conv'],
+            in_channels = d_args['in_channels']
         )
         
         self.first_bn = nn.BatchNorm1d(num_features = d_args['filts'][0])
@@ -183,9 +183,9 @@ class RawNet(nn.Module):
 
         self.bn_before_gru = nn.BatchNorm1d(num_features = d_args['filts'][2][-1])
         self.gru = nn.GRU(input_size = d_args['filts'][2][-1],
-			hidden_size = d_args['gru_node'],
-			num_layers = d_args['nb_gru_layer'],
-			batch_first = True)
+            hidden_size = d_args['gru_node'],
+            num_layers = d_args['nb_gru_layer'],
+            batch_first = True)
 
         
         self.fc1_gru = nn.Linear(in_features = d_args['gru_node'],
@@ -199,8 +199,7 @@ class RawNet(nn.Module):
         self.logsoftmax = nn.LogSoftmax(dim=1)
         
     def forward(self, x, y = None):
-        
-        
+
         nb_samp = x.shape[0]
         len_seq = x.shape[1]
         x=x.view(nb_samp,1,len_seq)

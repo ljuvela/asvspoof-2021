@@ -191,7 +191,7 @@ class LFCC(torch_nn.Module):
             self.num_coef = filter_num
         
         # window
-        self.register_buffer('window', torch.hamming_window(self.fl))
+        self.register_buffer('window', torch.hamming_window(self.fl), persistent=False)
 
         return
     

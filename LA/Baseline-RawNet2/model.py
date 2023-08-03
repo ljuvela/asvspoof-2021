@@ -6,6 +6,7 @@ import numpy as np
 from torch.utils import data
 from collections import OrderedDict
 from torch.nn.parameter import Parameter
+from copy import deepcopy
 
 
 ___author__ = "Hemlata Tak"
@@ -89,35 +90,36 @@ class SincConv(nn.Module):
 
 
 class Residual_block(nn.Module):
-    def __init__(self, nb_filts, first = False):
+    def __init__(self, nb_filts, first = False, use_batch_norm=True):
         super(Residual_block, self).__init__()
         self.first = first
+        self.use_batch_norm = use_batch_norm
         
         if not self.first:
-            self.bn1 = nn.BatchNorm1d(num_features = nb_filts[0])
+            self.bn1 = nn.BatchNorm1d(num_features = nb_filts[0]) if use_batch_norm else nn.Identity()
         
         self.lrelu = nn.LeakyReLU(negative_slope=0.3)
         
         self.conv1 = nn.Conv1d(in_channels = nb_filts[0],
-			out_channels = nb_filts[1],
-			kernel_size = 3,
-			padding = 1,
-			stride = 1)
+            out_channels = nb_filts[1],
+            kernel_size = 3,
+            padding = 1,
+            stride = 1)
         
-        self.bn2 = nn.BatchNorm1d(num_features = nb_filts[1])
+        self.bn2 = nn.BatchNorm1d(num_features = nb_filts[1]) if use_batch_norm else nn.Identity()
         self.conv2 = nn.Conv1d(in_channels = nb_filts[1],
-			out_channels = nb_filts[1],
-			padding = 1,
-			kernel_size = 3,
-			stride = 1)
-        
+            out_channels = nb_filts[1],
+            padding = 1,
+            kernel_size = 3,
+            stride = 1)
+
         if nb_filts[0] != nb_filts[1]:
             self.downsample = True
             self.conv_downsample = nn.Conv1d(in_channels = nb_filts[0],
-				out_channels = nb_filts[1],
-				padding = 0,
-				kernel_size = 1,
-				stride = 1)
+                out_channels = nb_filts[1],
+                padding = 0,
+                kernel_size = 1,
+                stride = 1)
             
         else:
             self.downsample = False
@@ -144,28 +146,30 @@ class Residual_block(nn.Module):
         return out
 
 
-
-
-
 class RawNet(nn.Module):
-    def __init__(self, d_args, device):
+    def __init__(self, d_args, device, use_batch_norm=True):
         super(RawNet, self).__init__()
 
+        # avoid in-place modification of args propagating to caller
+        d_args = deepcopy(d_args)
+
+        self.use_batch_norm = use_batch_norm
         self.Sinc_conv=SincConv(
             out_channels = d_args['filts'][0],
             kernel_size = d_args['first_conv'],
             in_channels = d_args['in_channels']
         )
         
-        self.first_bn = nn.BatchNorm1d(num_features = d_args['filts'][0])
+        # import ipdb; ipdb.set_trace()
+        self.first_bn = nn.BatchNorm1d(num_features = d_args['filts'][0]) if use_batch_norm else nn.Identity()
         self.selu = nn.SELU(inplace=True)
-        self.block0 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][1], first = True))
-        self.block1 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][1]))
-        self.block2 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2]))
+        self.block0 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][1], first = True, use_batch_norm=self.use_batch_norm))
+        self.block1 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][1], use_batch_norm=self.use_batch_norm))
+        self.block2 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2], use_batch_norm=self.use_batch_norm))
         d_args['filts'][2][0] = d_args['filts'][2][1]
-        self.block3 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2]))
-        self.block4 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2]))
-        self.block5 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2]))
+        self.block3 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2], use_batch_norm=self.use_batch_norm))
+        self.block4 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2], use_batch_norm=self.use_batch_norm))
+        self.block5 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][2], use_batch_norm=self.use_batch_norm))
         self.avgpool = nn.AdaptiveAvgPool1d(1)
 
         self.fc_attention0 = self._make_attention_fc(in_features = d_args['filts'][1][-1],
@@ -181,20 +185,22 @@ class RawNet(nn.Module):
         self.fc_attention5 = self._make_attention_fc(in_features = d_args['filts'][2][-1],
             l_out_features = d_args['filts'][2][-1])
 
-        self.bn_before_gru = nn.BatchNorm1d(num_features = d_args['filts'][2][-1])
-        self.gru = nn.GRU(input_size = d_args['filts'][2][-1],
+        self.bn_before_gru = nn.BatchNorm1d(num_features = d_args['filts'][2][-1]) if use_batch_norm else nn.Identity()
+        self.gru = nn.GRU(
+            input_size = d_args['filts'][2][-1],
             hidden_size = d_args['gru_node'],
             num_layers = d_args['nb_gru_layer'],
             batch_first = True)
 
-        
-        self.fc1_gru = nn.Linear(in_features = d_args['gru_node'],
-			out_features = d_args['nb_fc_node'])
+
+        self.fc1_gru = nn.Linear(
+            in_features = d_args['gru_node'],
+            out_features = d_args['nb_fc_node'])
        
-        self.fc2_gru = nn.Linear(in_features = d_args['nb_fc_node'],
-			out_features = d_args['nb_classes'],bias=True)
-			
-       
+        self.fc2_gru = nn.Linear(
+            in_features = d_args['nb_fc_node'],
+            out_features = d_args['nb_classes'],bias=True)
+
         self.sig = nn.Sigmoid()
         self.logsoftmax = nn.LogSoftmax(dim=1)
         
@@ -204,7 +210,7 @@ class RawNet(nn.Module):
         len_seq = x.shape[1]
         x=x.view(nb_samp,1,len_seq)
         
-        x = self.Sinc_conv(x)    
+        x = self.Sinc_conv(x)
         x = F.max_pool1d(torch.abs(x), 3)
         x = self.first_bn(x)
         x =  self.selu(x)
@@ -258,7 +264,7 @@ class RawNet(nn.Module):
       
         return output
         
-        
+
 
     def _make_attention_fc(self, in_features, l_out_features):
 
@@ -277,8 +283,9 @@ class RawNet(nn.Module):
         #def __init__(self, nb_filts, first = False):
         for i in range(nb_blocks):
             first = first if i == 0 else False
-            layers.append(Residual_block(nb_filts = nb_filts,
-				first = first))
+            layers.append(Residual_block(
+                nb_filts=nb_filts, first=first,
+                use_batch_norm=self.use_batch_norm))
             if i == 0: nb_filts[0] = nb_filts[1]
             
         return nn.Sequential(*layers)

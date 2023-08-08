@@ -160,7 +160,6 @@ class RawNet(nn.Module):
             in_channels = d_args['in_channels']
         )
         
-        # import ipdb; ipdb.set_trace()
         self.first_bn = nn.BatchNorm1d(num_features = d_args['filts'][0]) if use_batch_norm else nn.Identity()
         self.selu = nn.SELU(inplace=True)
         self.block0 = nn.Sequential(Residual_block(nb_filts = d_args['filts'][1], first = True, use_batch_norm=self.use_batch_norm))

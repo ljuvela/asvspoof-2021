@@ -62,7 +62,9 @@ def protocol_parse(protocol_filepath):
 class Model(torch_nn.Module):
     """ Model definition
     """
-    def __init__(self, in_dim, out_dim, args, prj_conf, mean_std=None):
+    def __init__(self, in_dim, out_dim, args, prj_conf, mean_std=None,
+                 dropout_prob=0.7,
+                 use_batch_norm=True):
         super(Model, self).__init__()
 
         ##### required part, no need to change #####
@@ -122,6 +124,7 @@ class Model(torch_nn.Module):
         # only uses [0, 0.5 * Nyquist_freq range for LFCC]
         self.lfcc_max_freq = 0.5 # TODO: 1.0?
 
+        self.use_batch_norm = use_batch_norm
 
         # window type
         self.win = torch.hann_window # TODO: remove if not used
@@ -169,16 +172,16 @@ class Model(torch_nn.Module):
 
                     torch_nn.Conv2d(32, 64, [1, 1], 1, padding=[0, 0]),
                     nii_nn.MaxFeatureMap2D(),
-                    torch_nn.BatchNorm2d(32, affine=False),
+                    torch_nn.BatchNorm2d(32, affine=False) if self.use_batch_norm else torch.nn.Identity(),
                     torch_nn.Conv2d(32, 96, [3, 3], 1, padding=[1, 1]),
                     nii_nn.MaxFeatureMap2D(),
 
                     torch.nn.MaxPool2d([2, 2], [2, 2]),
-                    torch_nn.BatchNorm2d(48, affine=False),
+                    torch_nn.BatchNorm2d(48, affine=False) if self.use_batch_norm else torch.nn.Identity(),
 
                     torch_nn.Conv2d(48, 96, [1, 1], 1, padding=[0, 0]),
                     nii_nn.MaxFeatureMap2D(),
-                    torch_nn.BatchNorm2d(48, affine=False),
+                    torch_nn.BatchNorm2d(48, affine=False) if self.use_batch_norm else torch.nn.Identity(),
                     torch_nn.Conv2d(48, 128, [3, 3], 1, padding=[1, 1]),
                     nii_nn.MaxFeatureMap2D(),
 
@@ -186,19 +189,19 @@ class Model(torch_nn.Module):
 
                     torch_nn.Conv2d(64, 128, [1, 1], 1, padding=[0, 0]),
                     nii_nn.MaxFeatureMap2D(),
-                    torch_nn.BatchNorm2d(64, affine=False),
+                    torch_nn.BatchNorm2d(64, affine=False) if self.use_batch_norm else torch.nn.Identity(),
                     torch_nn.Conv2d(64, 64, [3, 3], 1, padding=[1, 1]),
                     nii_nn.MaxFeatureMap2D(),
-                    torch_nn.BatchNorm2d(32, affine=False),
+                    torch_nn.BatchNorm2d(32, affine=False) if self.use_batch_norm else torch.nn.Identity(),
 
                     torch_nn.Conv2d(32, 64, [1, 1], 1, padding=[0, 0]),
                     nii_nn.MaxFeatureMap2D(),
-                    torch_nn.BatchNorm2d(32, affine=False),
+                    torch_nn.BatchNorm2d(32, affine=False) if self.use_batch_norm else torch.nn.Identity(),
                     torch_nn.Conv2d(32, 64, [3, 3], 1, padding=[1, 1]),
                     nii_nn.MaxFeatureMap2D(),
                     torch_nn.MaxPool2d([2, 2], [2, 2]),
                     
-                    torch_nn.Dropout(0.7)
+                    torch_nn.Dropout(dropout_prob)
                 )
             )
 
